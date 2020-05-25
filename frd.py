@@ -1,49 +1,68 @@
 import pyaudio
 import numpy as np
-class AudioListener:
-    def __init__(self):
-        pass
-    def toChar(self, bl):
-        bi = iter(bl)
-        bytes = zip(*(bi,) * 8)
-        shifts = (7, 6, 5, 4, 3, 2, 1, 0)
-        for byte in bytes:
-            yield chr(sum(bit << s for bit, s in zip(byte, shifts)))
-    def toS(self, bl):
-        return ''.join(self.toChar(bl))
-    def DecodeBA(self, byteArray):
-        return self.toS(byteArray)
-class AudioSender:
+import wave
+
+
+class AudioIO:
     def __init__(self):
         self.p = pyaudio.PyAudio()
-        self.speed = 0.01 # 10ms
+        self.byteorder = 'big' # BIG ENDIAN: SIGNIFICANT BYTE FIRST
+        self.speed = 0.2 # 10ms
         self.volume = 1
         self.fs = 44100
         self.freqhigh = 880
         self.freqlow = 720
-        self.samplehigh = (np.sin(2*np.pi*np.arange(self.fs*self.speed)*self.freqhigh/self.fs)).astype(np.float32)
-        self.samplelow = (np.sin(2*np.pi*np.arange(self.fs*self.speed)*self.freqhigh/self.fs)).astype(np.float32)
-        self.stream = self.p.open(format=pyaudio.paFloat32,
+        self.freqStop = 1120
+        self.freqStart = 600
+        self.samplehigh = self.CreateSample(self.freqhigh, self.fs, self.speed)
+        self.samplelow = self.CreateSample(self.freqlow, self.fs, self.speed)
+        self.samplestop = self.CreateSample(self.freqStop, self.fs, self.speed)
+        self.streaminput = self.p.open(format=pyaudio.paFloat32,
+                channels=1,
+                rate=self.fs,
+                output=True,
+                input=True)
+        self.streamout = self.p.open(format=pyaudio.paFloat32,
                 channels=1,
                 rate=self.fs,
                 output=True)
-    def EncodeAndTransmit(self, data):  
+        self.frames = []
+        self.chunks = 1024
+    def Record(self, speed, fs=44100):
+        for _ in range(0, int(fs / self.chunks * speed+0.05)):
+            data = self.streaminput.read(self.chunks)
+            self.frames.append(data)
+        wav = wave.open("temp.wav", "wb")
+        wav.setnchannels(2)
+        wav.setsampwidth(self.p.get_sample_size(pyaudio.paFloat32))
+        wav.setframerate(self.fs)
+        wav.writeframes(b''.join(self.frames))
+        wav.close()
+    def CreateSample(self, freq, fs, speed):
+        return (np.sin(2*np.pi*np.arange(fs*speed)*freq/fs)).astype(np.float32)
+    def EncodeAndTransmit(self, data):
+        for _ in range(10):
+            self.streamout.write(self.volume*self.CreateSample(self.freqStart, self.fs, 0.1))
+            self.streamout.write(0*self.CreateSample(self.freqStart, self.fs, self.speed+0.1))
         r = open(data, "r")
         bdata = r.read()
-        byte = self.tobits(bdata)
-        for bit in byte:
+        bita = self.tobits(bdata)
+        for bit in bita:
             self.Transmit(bit)
+        for _ in range(10):
+            self.streamout.write(self.volume*self.CreateSample(self.freqStop, self.fs, 0.1))
+            self.streamout.write(0*self.CreateSample(self.freqStop, self.fs, self.speed+0.1))
     def tobits(self, s):
         ords = (ord(c) for c in s)
         shifts = (7, 6, 5, 4, 3, 2, 1, 0)
         return [(o >> shift) & 1 for o in ords for shift in shifts]
     def Transmit(self, bit):
         if bit:
-            self.stream.write(self.volume*self.samplehigh)
+            self.streamout.write(self.volume*self.samplehigh)
+            self.streamout.write(self.volume*self.samplestop)
             return
-        self.stream.write(self.volume*self.samplelow)
-
+        self.streamout.write(self.volume*self.samplelow)
+        self.streamout.write(self.volume*self.samplestop)
 if __name__ == "__main__":
-    listener = AudioListener()
-    sender = AudioSender()
+    sender = AudioIO()
     sender.EncodeAndTransmit("lat.txt")
