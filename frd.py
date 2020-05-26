@@ -7,13 +7,13 @@ class AudioIO:
     def __init__(self):
         self.p = pyaudio.PyAudio()
         self.byteorder = 'big' # BIG ENDIAN: SIGNIFICANT BYTE FIRST
-        self.speed = 0.2 # 10ms
+        self.speed = 0.6 # 100ms
         self.volume = 1
         self.fs = 44100
-        self.freqhigh = 880
-        self.freqlow = 720
-        self.freqStop = 1120
-        self.freqStart = 600
+        self.freqhigh = 6500
+        self.freqlow = 2100
+        self.freqStop = 1000
+        self.freqStart = 500
         self.samplehigh = self.CreateSample(self.freqhigh, self.fs, self.speed)
         self.samplelow = self.CreateSample(self.freqlow, self.fs, self.speed)
         self.samplestop = self.CreateSample(self.freqStop, self.fs, self.speed)
